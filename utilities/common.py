@@ -1,197 +1,251 @@
 # %%
-# 標準・外部ライブラリのインポート
-from pathlib import Path as PathBase
-from typing import List, Optional, Tuple, Union, Self
+from pathlib import Path as PathBase 
+from functools import reduce 
 from datetime import date, datetime
-from dateutil.relativedelta import relativedelta
-from functools import reduce
-import pandas as pd
+import pandas as pd 
+import numpy as np 
+import os 
+import sys 
+import time 
 import csv
+from dateutil.relativedelta import relativedelta 
+from typing import Iterable, Self
+log = print 
+delta = relativedelta 
 
-# relativedeltaの短縮名
-delta = relativedelta
+SP, DOT, COMMA, COLON, SEMICOLON, SLASH, BACKSLASH, BACKQUOTE = ' ', '.', ',', ':', ';', '/', '\\', '`' 
+PLUS, MINUS, ASTERISK, SLASH, CARET = '+', '-', '*', '/', '^' 
+ATSIGN, PERCENT, AMPERSAND, ASTERISK, DOLLAR = '@', '%', '&', '*', '$' 
+UNDERSCORE, TILDE, HASH, VBAR, QUESTION = '_', '~', '#', '|', '?' 
+EQUAL, NOT, LT, GT, LTE, GTE = '=', '!=', '<', '>', '<=', '>='
+EQ, SQ, DQ = "=", "'", '"' 
+UNDER, PER, BAR, VBAR, CARET, TILDE, HASH, = "_", "/", "-", "|", "^", "~", "#"
+SHARP, ASTERISK, DOLLAR, AT, PERCENT, AMPERSAND = "#", "*", "$", "@", "%", "&" 
+PARENS, BRACKETS, BRACES = "()", "[]", "{}"
+LEFT, RIGHT, TOP, BOTTOM = "←", "→", "↑", "↓"
 
-# ログ出力用（デフォルトはprint。必要に応じて差し替え可能）
-log = print
+def join(s: any, *ss, sep=SP, func=str) -> str: 
+  """
+  文字列を結合して返す。
+  """
+  if isinstance(s, str) == False and isinstance(s, Iterable):
+    ss = [*s, *ss]
+  else:
+    ss = [s, *ss]
+  return sep.join(func(x) for x in ss)
+
+def sand(s, a, b=None): 
+  """
+  文字列を指定した文字列で挟んで返す。
+  """
+  return join(a, s, a if b is None else b, sep="")
+
+# log(join("aaa", "b", "c"))
+# log(join(111, "b", "c"))
+# log(join((234, "b") , "c"))
+
+def sq(s): return sand(s, SQ)
+def dq(s): return sand(s, DQ) 
+def paren(s): return sand(s, *PARENS)
+def bracket(s): return sand(s, *BRACKETS)
+def brace(s): return sand(s, *BRACES)
+def comma(s, *ss, **aa): return join(s, *ss, sep=COMMA, **aa)
+def bar(s, *ss, **aa): return join(s, *ss, sep=BAR, **aa)
+def under(s, *ss, **aa): return join(s, *ss, sep=UNDER, **aa)
+def per(s, *ss, **aa): return join(s, *ss, sep=PER, **aa)
+def dot(s, *ss, **aa): return join(s, *ss, sep=DOT, **aa)
+def and_(s, *ss, **aa): return join(s, *ss, sep=" and ", func=paren, **aa)
+def or_(s, *ss, **aa): return join(s, *ss, sep=" or ", func=paren, **aa)
+def xor(s, *ss, **aa): return join(s, *ss, sep=" xor ", func=paren, **aa)
+def not_(s, *ss, **aa): return join(s, *ss, sep=" not ", func=paren, **aa)
+
+# log(sq("a"))
+# log(dq("a"))
+# log(paren("a"))
+# log(bracket("a"))
+# log(brace("a"))
+# log(comma("a", "b", "c", func=sq))
+# log(bar("a", "b", "c", func=sq))
+# log(under("a", "b", "c", func=sq))
+# log(per("a", "b", "c", func=sq))
+# log(dot("a", "b", "c", func=sq))
+# log(and_("a", "b", "c"))
+# log(or_("a", "b", "c"))
+# log(xor("a", "b", "c"))
+# log(not_("a", "b", "c"))
+
+UTF8 = "utf-8"
+UTF16 = "utf-16"
+UTF8BOM = "utf-8-sig"
+SJIS = "cp932"
 
 class Path(PathBase):
   """
-  pathlib.Pathを拡張した独自Pathクラス。
-  追加メソッドにより、メソッドチェーンや型アノテーションの互換性を向上。
+  パスを操作するクラス。
   """
-  def __init__(self, *a, **aa):
-    super().__init__(*a, **aa)
-
-  @property
-  def parent(self) -> Self:
-    """親ディレクトリを同型で返す（型安全性向上）"""
+  def __init__(self, *ss, **aa):
+    super().__init__(*ss, **aa)
+  @property 
+  def parent(self) -> Self: 
     return type(self)(super().parent)
-
   @property
   def parents(self) -> list[Self]:
-    """全親ディレクトリを同型のリストで返す"""
-    return list(type(self)(x) for x in super().parents)
-
-  def mkdir(self, exists_ok=True, parents=True, *a) -> Self:
-    """
-    ディレクトリを作成し、自身を返す。
-    既存ディレクトリがあってもエラーにならない（デフォルト）。
-    """
-    super().mkdir(parents=parents, exist_ok=exists_ok, *a)
-    return self
-
-  def touch(self, exist_ok=True, **a) -> Self:
-    """
-    ファイルを作成し、自身を返す。
-    親ディレクトリがなければ自動作成。
-    """
-    self.parent.mkdir()
-    super().touch(exist_ok=exist_ok, **a)
-    return self
-
-  def glob(self, pattern: str, **a) -> list[Self]:
-    """
-    パターンにマッチするファイル・ディレクトリを同型でリスト化。
-    """
-    return [type(self)(x) for x in super().glob(pattern, **a)]
-
-  def expanduser(self):
-    """~を展開し、同型で返す"""
+    return [type(self)(x) for x in super().parents]
+  def ensure_dir(self) -> Self: 
+    super().mkdir(parents=True, exist_ok=True)
+    return self 
+  def ensure_file(self) -> Self: 
+    self.parent.ensure_dir()
+    super().touch(exist_ok=True)
+    return self 
+  def resolve(self, *ss, **aa) -> Self: 
+    return type(self)(super().resolve(*ss, **aa))
+  def absolute(self) -> Self: 
+    return type(self)(super().absolute())
+  def relative_to(self, *ss, **aa) -> Self: 
+    return type(self)(super().relative_to(*ss, **aa))
+  def with_name(self, name: str) -> Self: 
+    return type(self)(super().with_name(name))
+  def with_stem(self, stem: str) -> Self: 
+    return type(self)(super().with_stem(stem))
+  def with_suffix(self, suffix: str) -> Self: 
+    return type(self)(super().with_suffix(suffix))
+  def expanduser(self) -> Self: 
     return type(self)(super().expanduser())
+  def expandvars(self) -> Self: 
+    return type(self)(super().expandvars())
+  def glob(self, pattern: str) -> Iterable[Self]: 
+    return (type(self)(x) for x in super().glob(pattern))
+  def rglob(self, pattern: str) -> Iterable[Self]: 
+    return (type(self)(x) for x in super().rglob(pattern))
+  def with_parts(self, *parts: str) -> Self: 
+    return type(self)(super().with_parts(*parts))
+  def with_parent(self, parent: Self) -> Self: 
+    return type(self)(super().with_parent(parent))
+  def with_parents(self, n: int) -> Self: 
+    return type(self)(super().with_parents(n))
+  
 
-  def ensure_dir(self) -> Self:
-    """
-    ディレクトリがなければ作成し、自身を返す。
-    存在確認と作成を一括で行う。
-    """
-    return self.mkdir() if not self.exists() else self
-
-  def relative_to(self, other: Self) -> Self:
-    """
-    指定されたパスからの相対パスを計算し、同型で返す。
-    """
-    return type(self)(super().relative_to(other))
-
-def fullpath(*path: list[str | Path]) -> Path:
+def fullpath(path: str | Path | Iterable[str], *paths, **aa) -> Path:
   """
-  複数のパス要素を結合し、絶対パス（Path型）として返す。
-  文字列・Path混在可。~展開・絶対化も自動。
+  パスを結合して絶対パスを返す。
   """
+  if isinstance(path, str) == False and isinstance(path, Iterable):
+    paths = [*path, *paths]
+  else:
+    paths = [path, *paths]
   root = Path(".")
-  full = reduce(lambda a, b: Path(a) / Path(b), path, root)
-  return full.expanduser().resolve(strict=False).absolute()
+  full = reduce(lambda a, b: Path(a) / Path(b), paths, root)
+  return full.expanduser().resolve().absolute() 
 
-# 文字コード定数（日本語WindowsやExcelとの互換性も考慮）
-UTF8 = "utf-8"
-UTF8_BOM = "utf-8-sig"
-SJIS = "cp932"
+# log(fullpath("..", "hoge", "fuga", "piyo"))
+# log(fullpath(("..", "hoge", "fuga"), "piyo"))
+    
+def load_csv(path: str | Path | Iterable[str], 
+             *paths, encoding=UTF8BOM, 
+             **aa) -> pd.DataFrame:
+  """
+  CSVファイルを読み込んでDataFrameを返す。
+  """
+  fn = fullpath(path, *paths)
+  return pd.read_csv(fn, encoding=encoding, **aa)
 
-def save_csv(
-  df: pd.DataFrame, *path: list[str | Path], encoding=UTF8_BOM, quoting=csv.QUOTE_ALL, index=False, **kwargs
-) -> Path:
+def save_csv(df: pd.DataFrame, 
+             path: str | Path | Iterable[str], *paths, 
+             encoding=UTF8BOM, 
+             quoting=csv.QUOTE_ALL,
+             index=False, 
+             **aa) -> Path:
   """
-  DataFrameをCSVファイルとして保存し、保存先のPathを返す。
-  デフォルトでBOM付きUTF-8、Excel互換の設定。
+  DataFrameをCSVファイルに保存する。
   """
-  fn = fullpath(*path)
-  df.to_csv(fn, encoding=encoding, quoting=quoting, index=index, **kwargs)
+  fn = fullpath(path, *paths)
+  fn.parent.ensure_dir()
+  df.to_csv(fn, encoding=encoding, quoting=quoting, index=index, **aa)
   return fn
 
-def load_csv(
-  *path: list[str | Path], encoding=UTF8_BOM, **kwargs
-) -> pd.DataFrame:
+# df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+# fn = fullpath("test").ensure_dir() / "test.csv"
+# save_csv(df, fn)
+# log(load_csv(fn))
+
+def num(d: int | float, spec=","): return format(d, spec) 
+def ymd(d: date, spec="%Y%m%d"): return d.strftime(spec)
+def hms(d: datetime, spec="%H%M%S"): return d.strftime(spec)
+def ymds_of(st: date|Iterable[date], ed: date = None, spec="%Y%m%d", sep=BAR) -> str:
+  if isinstance(st, Iterable):
+    st, ed = st 
+  elif ed is None:
+    ed = st 
+  return join(ymd(st, spec), sep, ymd(ed, spec), sep="")
+
+# log(num(1234567890))
+# log(num(1234567890.011, ",.2f"))
+# log(ymd(date(2025, 1, 1)))
+# log(hms(datetime(2025, 1, 1, 12, 34, 56)))
+# log(ymds_of(date(2025, 1, 1), date(2025, 12, 31)))
+
+def step_of(index: int, total: any, sep=PER) -> str:
   """
-  CSVファイルを読み込み、DataFrameとして返す。
-  デフォルトでBOM付きUTF-8、Excel互換の設定。
+  インデックスと総数を進捗率として表示する。
   """
-  fn = fullpath(*path)
-  df = pd.read_csv(fn, encoding=encoding, **kwargs)
-  return df
-
-# よく使う記号の定数（ファイル名や文字列操作の互換性向上）
-SP, DOT, COMMA, PER, BAR, UNDER = " ", ".", ",", "/", "-", "_"
-EQUAL, COLON, SEMICOLON, AT, DOLLER, PERCENT = "=", ":", ";", "@", "$", "%"
-AMP, PLUS, MINUS, ASTERISK, SLASH = "&", "+", "-", "*", "/"
-STAR, EXCLAMATION, TILDE, CARET, DOLLAR = "*", "!", "~", "^", "$"
-SHARP, BACKSLASH = "#", "\\"
-PAREN, BRACKET, BRACES = "()", "[]", "{}"
-SQ, DQ = "'", '"'
-LEFT, BOTTOM, UP, RIGHT = "←↓↑→"
-CR, LF = "\r", "\n"
-
-# 文字列結合や装飾のためのユーティリティ関数群
-def join(*ss: list[str], sep=SP, func=str) -> str:
-  """指定区切りで文字列を結合。型変換も可能。"""
-  return sep.join(func(x) for x in ss)
-
-def sand(s, a, b=None, **aa) -> str:
-  """両端に記号を挟んで結合。b未指定時はaで両端。"""
-  return join(a, s, a if b is None else b, sep="", **aa)
-
-def sq(s): return sand(s, SQ)
-def dq(s): return sand(s, DQ)
-def paren(s): return sand(s, *PAREN)
-def bracket(s): return sand(s, *BRACKET)
-def braces(s): return sand(s, *BRACES)
-def comma(*ss): return join(*ss, sep=COMMA)
-def dot(*ss): return join(*ss, sep=DOT)
-def per(*ss): return join(*ss, sep=PER)
-def bar(*ss): return join(*ss, sep=BAR)
-def under(*ss): return join(*ss, sep=UNDER)
-def and_(*ss, func=paren): return join(*ss, sep=" and ", func=func)
-def or_(*ss, func=paren): return join(*ss, sep=" or ", func=func)
-
-def num(d, spec=","): return format(d, spec)
-def ymd(d, spec="%Y%m%d"): return format(d, spec)
-def hms(d, spec="%H%M%S"): return format(d, spec)
-def ymds_of(*dd, sep=BAR, spec="%Y%m%d") -> str:
-  """
-  複数の日付を指定形式で結合。
-  例: ymds_of(date(2023, 1, 1), date(2023, 12, 31), spec="%Y/%m/%d")
-  """
-  return join(*[format(d, spec) for d in dd], sep=sep)
-
-if __name__ == "__main__":
-  # テスト用のコードブロック
-  log(ymds_of(date(2023, 1, 1), date(2023, 12, 31)))
-  log(ymds_of(date(2023, 1, 1), date(2023, 12, 31), spec="%Y/%m/%d"))
-  # 例: ymds_of(date(2023, 1, 1), date(2023, 12, 31), spec="%Y/%m/%d")
-
-def step_of(index, total):
-  """
-  進捗表示のためのユーティリティ。
-  指定されたインデックスと総数から、進捗率を計算して返す。
-  """
-  # if len(total) is available, total is a list
   if hasattr(total, "__len__"):
+    # 総数がイテラブルの場合は、総数の長さを総数とする。
     total = len(total)
-    index = index + 1
-  return per(num(index), num(total))
+    index = index + 1 
+  return join(num(index), num(total), sep=sep)
 
-def month_range(st: date, ed: date) -> list[Tuple[date, date]]:
-  """
-  2つの日付の間の各月の（開始日, 終了日）のリストを返す。
-  月をまたぐ集計やレポート作成時に便利。
-  """
-  stt = min(st + delta(day=1), st)
-  edd = max(ed + delta(day=31), ed)
-  diff = delta(edd, stt).months
-  months = list(list(stt + delta(months=x, day=y) for y in (1, 31)) for x in range(diff + 1))
-  months[0] = (max(stt, st), months[0][-1])
-  months[-1] = (months[-1][0], min(ed, edd))
-  return months
+# log(step_of(1234, 12345))
+# log(step_of(1234, range(12345)))
 
-def fiscal_year(day: date) -> Tuple[date, date]:
+def months_of(st: Iterable[date] | date, ed: date = None, strict=True) -> Iterable[date]:
   """
-  指定日付が属する会計年度（4月始まり）の開始日と終了日を返す。
-  日本の会計年度処理などに対応。
+  開始日と終了日の間の月のブロックを返す。
+  ブロックは月の開始日と終了日のペアのタプルで返す。
+  strict=Trueの場合、
+  開始日と終了日がブロックの中にある場合は、
+  ブロックの開始日と終了日を開始日と終了日に変更する。
   """
-  fy = day.year + (day.month > 3)
-  st = date(fy, 4, 1)
-  ed = date(fy + 1, 3, 31)
-  return st, ed
+  if isinstance(st, Iterable):
+    st, ed = st 
+  elif isinstance(st, date) and ed is None: 
+    ed = st 
+  stt = st + delta(day=1)
+  edd = ed + delta(day=31)
+  diff = delta(edd, stt).months 
+  log(st, RIGHT, stt)
+  log(ed, LEFT, edd)
+  log(diff)
+  months = list(
+    tuple(stt + delta(months=x, day=y) 
+     for y in (1, 31)) 
+     for x in range(diff + 1)
+     )
+  if strict:
+    # 開始日と終了日がブロックの中にある場合は、
+    # ブロックの開始日と終了日を開始日と終了日に変更する。  
+    months[0] = (max(st, stt), months[0][-1])
+    months[-1] = (months[-1][0], min(ed, edd))
+  return months 
 
-if False:
-  st = date(2025, 8, 10)
-  for day in (st + delta(months=x) for x in range(14)):
-    log(day, RIGHT, fiscal_year(day))
+# log(months_of(date(2025, 1, 1), date(2025, 12, 31)))
+# log(months_of(date(2025, 1, 1)))
+# log(months_of((date(2025, 1, 1), date(2025, 12, 31))))
+
+FISCAL_YEAR_START = 4 
+def fiscal_year_of(d: date=date.today(), start=FISCAL_YEAR_START, end=12) -> tuple[date, date]:
+  """`
+  会計年度の開始日と終了日を返す。
+  会計年度は4月から始まる。
+  会計年度の終了日は3月31日。
+  """
+  year = d.year - (1 if d.month < start else 0)
+  st = date(year, start, 1)
+  ed = date(year + 1, end, 31)
+  return st, ed 
+
+# for d in (date.today() + delta(months=x) for x in range(14)):
+#   log(d, fiscal_year_of(d))
+
+
+
